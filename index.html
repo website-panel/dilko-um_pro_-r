@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YDT Öğrenci Paneli</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            background-image: radial-gradient(circle at top left, rgba(124, 58, 237, 0.15), transparent 40%),
+                              radial-gradient(circle at bottom right, rgba(29, 78, 216, 0.15), transparent 40%);
+        }
+
+        /* View Yönetimi ve Animasyonlar */
+        .view {
+            display: none;
+            width: 100%;
+            animation: fadeIn 0.6s ease-in-out forwards;
+        }
+        .view.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Form Geçiş Animasyonları */
+        .form-container { transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out; }
+        .form-hidden { opacity: 0; transform: scale(0.95); pointer-events: none; position: absolute; left: -9999px; }
+
+        /* Görev Tamamlama Animasyonu ve Stilleri */
+        .task-checkbox:checked + label { background-color: rgba(74, 222, 128, 0.1); border-color: #22c55e; }
+        .task-checkbox:checked + label .checkbox-icon { background-color: #22c55e; border-color: #22c55e; }
+        .task-checkbox:checked + label .checkbox-icon svg { transform: scale(1); }
+        .task-checkbox:checked + label .task-title { text-decoration: line-through; color: #6b7280; }
+
+        /* İlerleme Grafiği Animasyonu */
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        /* Buton Yüklenme Animasyonu */
+        .btn-loading .btn-text { opacity: 0; }
+        .btn-loading .spinner { opacity: 1; }
+        .spinner { opacity: 0; transition: opacity 0.2s; }
+
+        /* Toast Bildirimleri */
+        #toast {
+            position: fixed;
+            bottom: -100px;
+            left: 50%;
+            transform: translateX(-50%);
+            transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            z-index: 999;
+        }
+        #toast.show { bottom: 30px; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 antialiased text-gray-200">
+
+    <div id="loading-view" class="view active flex-col items-center justify-center">
+        <svg class="animate-spin h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        <p class="mt-4 text-lg font-semibold text-gray-400">Panel Yükleniyor...</p>
+    </div>
+
+    <div id="auth-view" class="view hidden max-w-md">
+        <div class="bg-slate-800/50 backdrop-blur-sm w-full rounded-2xl shadow-2xl shadow-indigo-900/10 border border-slate-700 p-8 relative overflow-hidden">
+            <div class="text-center mb-8">
+                <svg class="mx-auto h-12 w-auto text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6-2.292m0 0V21M12 12.75H18" /></svg>
+                <h2 class="mt-4 text-3xl font-extrabold text-white tracking-tight">Öğrenci Paneli</h2>
+                <p class="text-slate-400 mt-1">Gelişimini takip etmeye başla!</p>
+            </div>
+            <div id="login-form" class="form-container">
+                <div class="space-y-4">
+                    <input type="email" id="login-email" placeholder="E-posta Adresiniz" class="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 px-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder:text-slate-400" required>
+                    <input type="password" id="login-password" placeholder="Şifreniz" class="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 px-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder:text-slate-400" required>
+                    <button id="login-btn" class="w-full relative py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-800/20 hover:shadow-xl hover:shadow-indigo-800/30">
+                        <span class="btn-text">Giriş Yap</span>
+                        <span class="spinner absolute inset-0 flex items-center justify-center"><svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></span>
+                    </button>
+                </div>
+                <p class="text-center text-sm text-slate-400 mt-6">Hesabın yok mu? <a href="#" id="show-register" class="font-medium text-indigo-400 hover:underline">Hesap Oluştur</a></p>
+            </div>
+            <div id="register-form" class="form-container form-hidden">
+                <div class="space-y-4">
+                    <input type="text" id="register-name" placeholder="Ad Soyad" class="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 px-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder:text-slate-400" required>
+                    <input type="email" id="register-email" placeholder="E-posta Adresiniz" class="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 px-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder:text-slate-400" required>
+                    <input type="password" id="register-password" placeholder="Şifre (En az 6 karakter)" class="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 px-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition placeholder:text-slate-400" required>
+                    <button id="register-btn" class="w-full relative py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-800/20 hover:shadow-xl hover:shadow-indigo-800/30">
+                        <span class="btn-text">Kayıt Ol</span>
+                        <span class="spinner absolute inset-0 flex items-center justify-center"><svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></span>
+                    </button>
+                </div>
+                <p class="text-center text-sm text-slate-400 mt-6">Zaten bir hesabın var mı? <a href="#" id="show-login" class="font-medium text-indigo-400 hover:underline">Giriş Yap</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="view hidden max-w-6xl flex-col">
+        <div class="bg-slate-800/50 backdrop-blur-sm w-full rounded-2xl shadow-2xl shadow-indigo-900/10 border border-slate-700 p-6 sm:p-8" style="animation-delay: 100ms; opacity: 0; animation: fadeInUp 0.7s ease-out forwards;">
+            <header class="flex flex-col sm:flex-row justify-between sm:items-center pb-6 mb-6 border-b border-slate-700">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-black text-white" id="welcome-message">Yükleniyor...</h1>
+                    <p class="text-slate-400 mt-2 text-lg">Haftalık hedeflerine odaklanma zamanı! 💪</p>
+                </div>
+                <button id="logout-btn" class="mt-4 sm:mt-0 px-5 py-2.5 bg-slate-700 text-slate-300 font-semibold rounded-lg hover:bg-slate-600 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                    <span>Çıkış Yap</span>
+                </button>
+            </header>
+            
+            <div id="program-selector-container" class="mb-6"></div>
+            <div id="program-content"></div>
+
+        </div>
+        <footer class="text-center mt-8"><p class="text-sm text-slate-500">YDT Program Paneli &copy; 2025</p></footer>
+    </div>
+
+    <div id="toast" class="px-6 py-3 rounded-lg shadow-2xl font-semibold"></div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, getDoc, query, where, getDocs, orderBy, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    
+    // Firebase yapılandırmanız buraya gelecek.
+    const firebaseConfig = {
+        apiKey: "AIzaSyAimUnNMLeewnDG6Gf1TkoqknYIJbl1Nqw",
+        authDomain: "program-panel.firebaseapp.com",
+        projectId: "program-panel",
+        storageBucket: "program-panel.appspot.com",
+        messagingSenderId: "1012274489744",
+        appId: "1:1012274489744:web:9ab5598ab59f5820ceeb15"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // --- YARDIMCI FONKSİYONLAR ---
+    const views = { loading: document.getElementById('loading-view'), auth: document.getElementById('auth-view'), dashboard: document.getElementById('dashboard-view') };
+    const showView = (viewName) => {
+        Object.values(views).forEach(v => v.classList.remove('active'));
+        views[viewName].classList.add('active');
+    };
+
+    const toast = document.getElementById('toast');
+    let toastTimeout;
+    const showToast = (message, type = 'error') => {
+        clearTimeout(toastTimeout);
+        toast.textContent = message;
+        toast.className = `px-6 py-3 rounded-lg shadow-2xl font-semibold ${type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`;
+        toast.classList.add('show');
+        toastTimeout = setTimeout(() => toast.classList.remove('show'), 4000);
+    };
+
+    const toggleButtonLoading = (btn, isLoading) => {
+        btn.disabled = isLoading;
+        if (isLoading) btn.classList.add('btn-loading');
+        else btn.classList.remove('btn-loading');
+    };
+
+    // --- KİMLİK DOĞRULAMA & FORM GEÇİŞİ ---
+    document.getElementById('show-register').addEventListener('click', (e) => { e.preventDefault(); toggleForms(true); });
+    document.getElementById('show-login').addEventListener('click', (e) => { e.preventDefault(); toggleForms(false); });
+    const toggleForms = (showRegister) => {
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        if (showRegister) {
+            loginForm.classList.add('form-hidden');
+            registerForm.classList.remove('form-hidden');
+        } else {
+            registerForm.classList.add('form-hidden');
+            loginForm.classList.remove('form-hidden');
+        }
+    };
+    
+    const registerBtn = document.getElementById('register-btn');
+    registerBtn.addEventListener('click', async () => {
+        const name = document.getElementById('register-name').value.trim();
+        const email = document.getElementById('register-email').value.trim();
+        const password = document.getElementById('register-password').value;
+        if (!name || !email || !password) { showToast("Lütfen tüm alanları doldurun."); return; }
+
+        toggleButtonLoading(registerBtn, true);
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            await setDoc(doc(db, "students", userCredential.user.uid), { name, email, createdAt: Timestamp.now() });
+        } catch (error) {
+            if (error.code === 'auth/email-already-in-use') showToast("Bu e-posta adresi zaten kullanılıyor.");
+            else if (error.code === 'auth/weak-password') showToast("Şifre en az 6 karakter olmalıdır.");
+            else showToast("Kayıt sırasında bir hata oluştu.");
+            console.error("Kayıt Hatası:", error);
+        } finally {
+            toggleButtonLoading(registerBtn, false);
+        }
+    });
+
+    const loginBtn = document.getElementById('login-btn');
+    loginBtn.addEventListener('click', async () => {
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        if (!email || !password) { showToast("Lütfen tüm alanları doldurun."); return; }
+        
+        toggleButtonLoading(loginBtn, true);
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error) {
+            showToast("E-posta veya şifre hatalı.");
+            console.error("Giriş Hatası:", error);
+        } finally {
+            toggleButtonLoading(loginBtn, false);
+        }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+
+    // --- ANA KONTROL VE YÖNLENDİRME ---
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            const studentDoc = await getDoc(doc(db, "students", user.uid));
+            const studentData = studentDoc.exists() ? studentDoc.data() : { name: user.email };
+            const firstName = studentData.name.split(' ')[0];
+            document.getElementById('welcome-message').textContent = `Hoş Geldin, ${firstName}!`;
+            await initializeDashboard(user.uid);
+            showView('dashboard');
+        } else {
+            showView('auth');
+        }
+    });
+
+    // --- KONTROL PANELİ (DASHBOARD) ---
+    async function initializeDashboard(userId) {
+        const selectorContainer = document.getElementById('program-selector-container');
+        const programContent = document.getElementById('program-content');
+        
+        // ÖNEMLİ: Bu sorgu, Firestore'da bir kompozit indeks gerektirir.
+        // Koleksiyon: 'programs', Alanlar: 'studentId' (Artan), 'createdAt' (Azalan)
+        const q = query(collection(db, "programs"), where("studentId", "==", userId), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            selectorContainer.innerHTML = "";
+            programContent.innerHTML = `<div class="text-center p-8 bg-slate-700/50 rounded-lg"><p class="text-slate-300">Harika! Size henüz bir program atanmamış. 🤷‍♂️</p></div>`;
+            return;
+        }
+
+        const programs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        let selectorHTML = `
+            <label for="program-selector" class="block text-sm font-medium text-slate-300 mb-2">Görüntülemek istediğiniz programı seçin:</label>
+            <select id="program-selector" class="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+                ${programs.map(p => `<option value="${p.id}">${p.week}</option>`).join('')}
+            </select>
+        `;
+        selectorContainer.innerHTML = selectorHTML;
+
+        await displayProgram(programs[0].id);
+
+        document.getElementById('program-selector').addEventListener('change', (e) => {
+            displayProgram(e.target.value);
+        });
+    }
+    
+    async function displayProgram(programId) {
+        const programContent = document.getElementById('program-content');
+        programContent.innerHTML = `<div class="text-center p-8"><span class="font-semibold text-slate-300">Program yükleniyor...</span></div>`;
+
+        const [programDoc, progressDoc] = await Promise.all([
+            getDoc(doc(db, "programs", programId)),
+            getDoc(doc(db, "progress", programId))
+        ]);
+
+        if (!programDoc.exists()) {
+            programContent.innerHTML = `<p>Program bulunamadı.</p>`;
+            return;
+        }
+        const program = programDoc.data();
+        const progressData = progressDoc.exists() ? progressDoc.data().tasks : {};
+        
+        const totalTasks = program.tasks.length;
+        const completedTasks = Object.values(progressData).filter(Boolean).length;
+        const progressPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+        
+        const tasksHTML = program.tasks.map((task, index) => {
+            const isChecked = progressData[task.title] === true;
+            return `
+            <div style="animation-delay: ${index * 50}ms; opacity: 0; animation: fadeInUp 0.5s ease-out forwards;">
+                <input type="checkbox" id="task-${index}" data-task-title="${task.title}" class="task-checkbox hidden" ${isChecked ? 'checked' : ''}>
+                <label for="task-${index}" class="flex items-center cursor-pointer w-full p-4 sm:p-5 bg-slate-700/50 border-2 border-slate-700 rounded-xl transition-all duration-300 hover:border-indigo-500 hover:bg-slate-700">
+                    <div class="checkbox-icon w-6 h-6 border-2 border-slate-500 rounded-md mr-4 flex-shrink-0 grid place-items-center transition-colors"><svg class="w-4 h-4 text-white transform scale-0 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg></div>
+                    <div class="flex-grow"><span class="task-title font-bold text-slate-100 transition-colors">${task.title}</span><p class="text-sm text-slate-400">${task.source}</p></div>
+                    <div class="text-right ml-4 text-sm font-semibold text-indigo-400"><p>${task.questions} Soru</p></div>
+                </label>
+            </div>`;
+        }).join('');
+
+        programContent.innerHTML = `
+            <div class="space-y-8 mt-8">
+                <div class="bg-slate-900/50 border border-slate-700 rounded-xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                    <div class="relative w-40 h-40 mx-auto md:mx-0 flex items-center justify-center">
+                        <svg class="w-full h-full" viewBox="0 0 100 100">
+                            <circle class="text-slate-700" stroke-width="10" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50"/>
+                            <circle id="progress-ring-circle" class="progress-ring-circle text-indigo-500" stroke-width="10" stroke-linecap="round" stroke="currentColor" fill="transparent" r="45" cx="50" cy="50"/>
+                        </svg>
+                        <span id="progress-percentage-text" class="absolute text-3xl font-black text-white">${Math.round(progressPercentage)}%</span>
+                    </div>
+                    <div class="col-span-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                        <div class="bg-slate-800 p-4 rounded-lg"><p class="font-bold text-3xl text-white">${totalTasks}</p><p class="text-sm text-slate-400">Toplam Görev</p></div>
+                        <div class="bg-slate-800 p-4 rounded-lg"><p id="completed-tasks-count" class="font-bold text-3xl text-green-400">${completedTasks}</p><p class="text-sm text-slate-400">Tamamlandı</p></div>
+                        <div class="bg-slate-800 p-4 rounded-lg"><p id="remaining-tasks-count" class="font-bold text-3xl text-amber-400">${totalTasks - completedTasks}</p><p class="text-sm text-slate-400">Kalan</p></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2">
+                        <h4 class="font-bold text-xl text-white mb-4">Görev Listen</h4>
+                        <div class="space-y-3">${tasksHTML}</div>
+                    </div>
+                    ${program.generalNotes ? `
+                    <div class="lg:col-span-1">
+                        <h4 class="font-bold text-xl text-white mb-4">Haftalık Notlar 📝</h4>
+                        <div class="text-slate-300 bg-slate-700/50 border-l-4 border-amber-400 p-4 rounded-r-lg whitespace-pre-wrap h-full">${program.generalNotes}</div>
+                    </div>` : ''}
+                </div>
+            </div>`;
+        
+        updateProgressCircle(progressPercentage);
+        
+        document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                updateTaskProgress(programId, e.target.dataset.taskTitle, e.target.checked);
+                updateStats();
+            });
+        });
+    }
+    
+    const updateProgressCircle = (percentage) => {
+        const circle = document.getElementById('progress-ring-circle');
+        if(!circle) return;
+        const radius = circle.r.baseVal.value;
+        const circumference = 2 * Math.PI * radius;
+        const offset = circumference - (percentage / 100) * circumference;
+        circle.style.strokeDasharray = `${circumference} ${circumference}`;
+        circle.style.strokeDashoffset = offset;
+    };
+
+    const updateStats = () => {
+        const allCheckboxes = document.querySelectorAll('.task-checkbox');
+        const total = allCheckboxes.length;
+        let completed = 0;
+        allCheckboxes.forEach(cb => { if (cb.checked) completed++; });
+        const remaining = total - completed;
+        const percentage = total > 0 ? (completed / total) * 100 : 0;
+        
+        document.getElementById('completed-tasks-count').textContent = completed;
+        document.getElementById('remaining-tasks-count').textContent = remaining;
+        document.getElementById('progress-percentage-text').textContent = `${Math.round(percentage)}%`;
+        updateProgressCircle(percentage);
+    };
+
+    async function updateTaskProgress(programId, taskTitle, isCompleted) {
+        const progressRef = doc(db, "progress", programId);
+        try {
+            await setDoc(progressRef, { tasks: { [taskTitle]: isCompleted } }, { merge: true });
+        } catch (error) {
+            console.error("İlerleme güncellenirken hata: ", error);
+            showToast("Göreviniz güncellenemedi, lütfen tekrar deneyin.");
+        }
+    }
+</script>
+</body>
+</html>
